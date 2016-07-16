@@ -14,7 +14,8 @@ Install
 Example
 -------
 
-::
+This package uses cython to speed up run-time. If you want to step through the
+code, use the ``fastdtw_py`` function rather than ``fastdtw``::
   
   import numpy as np
   from scipy.spatial.distance import euclidean

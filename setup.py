@@ -1,4 +1,6 @@
 from setuptools import setup, find_packages
+from Cython.Build import cythonize
+import os.path
 
 classifiers = [
     'Programming Language :: Python :: 2',
@@ -16,7 +18,8 @@ setup(
     description='Dynamic Time Warping (DTW) algorithm with an O(N) time and memory complexity.',
     license='MIT',
     keywords=['dtw'],
-    py_modules=['fastdtw'],
+    ext_modules = cythonize(os.path.join("fastdtw", "fastdtw.pyx")),
+    packages=find_packages(),
     install_requires=['six'],
     classifiers=classifiers
 )
