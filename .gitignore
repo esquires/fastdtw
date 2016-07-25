@@ -4,5 +4,5 @@
 dist
 fastdtw.egg-info
 build
-*.c
 *.so
+*.html
