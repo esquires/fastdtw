@@ -1,10 +1,11 @@
 from setuptools import setup, find_packages, Extension
 from distutils.errors import DistutilsError, CCompilerError
 import warnings
+import os
 
 extensions = [Extension(
-        "_fastdtw",
-        ["_fastdtw.pyx"],
+        'fastdtw._fastdtw',
+        [os.path.join('fastdtw', "_fastdtw.pyx")],
         language="c++",
         include_dirs=[],
         libraries=["stdc++"]
