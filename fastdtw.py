@@ -7,7 +7,6 @@ from collections import defaultdict
 
 from six.moves import xrange
 
-
 def fastdtw(x, y, radius=1, dist=lambda a, b: abs(a - b)):
     min_time_size = radius + 2
 
@@ -73,3 +72,9 @@ def __expand_window(path, len_x, len_y, radius):
         start_j = new_start_j
 
     return window
+
+try:
+    from ._fastdtw import fastdtw
+except SystemError:
+    # user has been warned on installation
+    pass    

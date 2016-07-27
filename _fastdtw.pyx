@@ -3,12 +3,12 @@
 
 from __future__ import absolute_import, division
 
-from pprint import pprint
-
+from libcpp.vector cimport vector  # noqa
 from libcpp.map cimport map
 from libcpp.set cimport set
 from libcpp.utility cimport pair
-from cython.operator cimport dereference
+from cython.operator cimport dereference as deref
+from cython.operator cimport preincrement
 
 cdef struct CostEntry:
     double cost
@@ -30,15 +30,20 @@ def fastdtw(x, y, radius=1, dist=lambda a, b: abs(a - b)):
 
 
 def dtw(x, y, window=None, dist=lambda a, b: abs(a - b)):
+    cdef unsigned int len_x, len_y, i, j, k, len_window
 
-    cdef int len_x, len_y, i, j
     cdef double inf, cost_up, cost_left, cost_cnr, dt
+    cdef pair[int, int] key_up, key_left, key_cnr, key_next
+    cdef vector[pair[int, int]] window_vec
     len_x, len_y = len(x), len(y)
     if window is None:
         window = [(i, j) for i in range(len_x) for j in range(len_y)]
 
-    # window could be a vector but profiling indicated little improvement
-    window = [(i + 1, j + 1) for i, j in window]
+    len_window = len(window)
+    window_vec.resize(len_window)
+    for i in range(len_window):
+        window_vec[i].first = window[i][0] + 1
+        window_vec[i].second += window[i][1] + 1
 
     cdef map[pair[int, int], CostEntry] D
     cdef CostEntry cost_entry
@@ -48,17 +53,17 @@ def dtw(x, y, window=None, dist=lambda a, b: abs(a - b)):
     cost_entry.prev_y_idx = 0
     inf = float('inf')
 
-    D[0, 0] = cost_entry
+    D[__get_key(0, 0)] = cost_entry
 
-    for i, j in window:
+    for k in range(len_window):
+        i = window_vec[k].first
+        j = window_vec[k].second
 
         dt = dist(x[i-1], y[j-1])
 
-        # note: cython will converting tuples to a c++ pair. Profiling
-        # indicates this makes about a 10% performance so it was not performed
-        cost_up = D[i-1, j].cost if D.find((i-1, j)) != D.end() else inf
-        cost_left = D[i, j-1].cost if D.find((i, j-1)) != D.end() else inf
-        cost_cnr = D[i-1, j-1].cost if D.find((i-1, j-1)) != D.end() else inf
+        cost_up = __get_cost(D, i - 1, j, inf)
+        cost_left = __get_cost(D, i, j - 1, inf)
+        cost_cnr = __get_cost(D, i - 1, j - 1, inf)
 
         if cost_up < cost_left and cost_up < cost_cnr:
             cost_entry.cost = cost_up + dt
@@ -75,13 +80,13 @@ def dtw(x, y, window=None, dist=lambda a, b: abs(a - b)):
             cost_entry.prev_x_idx = i - 1
             cost_entry.prev_y_idx = j - 1
 
-        D[i, j] = cost_entry
+        D[__get_key(i, j)] = cost_entry
 
     path = []
     i, j = len_x, len_y
     while not (i == j == 0):
         path.append((i-1, j-1))
-        cost_entry = D[i, j]
+        cost_entry = D[__get_key(i, j)]
         i = cost_entry.prev_x_idx
         j = cost_entry.prev_y_idx
     path.reverse()
@@ -89,42 +94,50 @@ def dtw(x, y, window=None, dist=lambda a, b: abs(a - b)):
 
 
 cdef __reduce_by_half(x):
-    cdef int i
-    return [(x[i] + x[1+i]) / 2.0 for i in range(0, len(x) - len(x) % 2, 2)]
+    cdef int i, len_x = len(x)
+    out = []
+    for i in range(0, len_x - len_x % 2, 2):
+        out.append((x[i] + x[1+i]) / 2.0)
+    return out
 
 
 cdef __expand_window(path, int len_x, int len_y, int radius):
     cdef set[pair[int, int]] path_, window_
-    cdef pair[int, int] key
-    cdef int i, j, a, b, start_j, new_start_j
+    cdef vector[pair[int, int]] vec
+    cdef pair[int, int] key, val
+    cdef int i, j, k, a, b, start_j, new_start_j, len_vec
 
-    # this could be made into a vector. Profiling indicated little performance
-    # improvement
-    lst = [(a, b)
-           for a in range(-radius, radius+1)
-           for b in range(-radius, radius+1)]
+    len_vec = (2 * radius + 1)**2
+    vec.reserve(len_vec)
+    i = 0
+    for a in range(-radius, radius + 1):
+        for b in range(-radius, radius + 1):
+            vec[i] = __get_key(a, b)
+            i += 1
 
     for i, j in path:
-        for a, b in lst:
-            key.first = i + a
-            key.second = j + b
+        for k in range(len_vec):
+            key.first = i + vec[k].first
+            key.second = j + vec[k].second
             path_.insert(key)
 
-    for i, j in path_:
-        for a, b in ((i * 2, j * 2), (i * 2, j * 2 + 1),
-                     (i * 2 + 1, j * 2), (i * 2 + 1, j * 2 + 1)):
-            key.first = a
-            key.second = b
-            window_.insert(key)
+    it = path_.begin()
+    while it != path_.end():
+        i = deref(it).first
+        j = deref(it).second
+        preincrement(it)
+
+        window_.insert(__get_key(i * 2, j * 2))
+        window_.insert(__get_key(i * 2, j * 2 + 1))
+        window_.insert(__get_key(i * 2 + 1, j * 2))
+        window_.insert(__get_key(i * 2 + 1, j * 2 + 1))
 
     window = []
     start_j = 0
     for i in range(0, len_x):
         new_start_j = -1
         for j in range(start_j, len_y):
-            # we could use a key rather than a tuple to do the find lookup.
-            # Profiling indicated little performance improvement
-            if window_.find((i, j)) != window_.end():
+            if window_.find(__get_key(i, j)) != window_.end():
                 window.append((i, j))
                 if new_start_j == -1:
                     new_start_j = j
@@ -133,3 +146,21 @@ cdef __expand_window(path, int len_x, int len_y, int radius):
         start_j = new_start_j
 
     return window
+
+cdef pair[int, int] __get_key(int i, int j):
+    cdef pair[int, int] out
+    out.first = i
+    out.second = j
+    return out
+
+cdef double __get_cost(map[pair[int, int], CostEntry] &D,  # noqa
+                       int i, int j, double inf):
+    cdef pair[int, int] key = __get_key(i, j)
+    cdef double cost
+
+    it = D.find(key)
+    if it != D.end():
+        cost = deref(it).second.cost
+    else:
+        cost = inf
+    return cost

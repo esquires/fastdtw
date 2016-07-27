@@ -1,19 +1,15 @@
 from setuptools import setup, find_packages, Extension
+from distutils.errors import DistutilsError, CCompilerError
+import warnings
 
 extensions = [Extension(
-        "fastdtw",
-        ["fastdtw.pyx"],
+        "_fastdtw",
+        ["_fastdtw.pyx"],
         language="c++",
         include_dirs=[],
-        libraries=["stdc++"],
-        extra_link_args=['-std=c++11'],
-        extra_compile_args=['-std=c++11'],
+        libraries=["stdc++"]
     )]
 
-for e in extensions:
-    e.cython_directives = {'boundscheck': False,
-                           'cdivision': True,
-                           'wraparound': False}
 classifiers = [
     'Programming Language :: Python :: 2',
     'Programming Language :: Python :: 3',
@@ -32,17 +28,14 @@ kwargs = {
     'keywords': ['dtw'],
     'install_requires': ['six'],
     'packages': find_packages(),
-    'ext_modules' :  extensions,
+    'ext_modules':  extensions,
+    'py_modules': ['fastdtw'],
     'classifiers': classifiers
 }
 
 try:
     setup(**kwargs)
-except: 
+except SystemExit:
     del kwargs['ext_modules']
-    from pprint import pprint
-    pprint(kwargs)
-    kwargs['py_modules'] = ['fastdtw']
-    print('cython not available on this computer. '
-          'Falling back on pure python package')
+    warnings.warn('compilation failed. Installing pure python package')
     setup(**kwargs)
