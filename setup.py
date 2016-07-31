@@ -8,6 +8,7 @@ extensions = [Extension(
         [os.path.join('fastdtw', "_fastdtw.pyx")],
         language="c++",
         include_dirs=[],
+        extra_compile_args=['-std=c++11'],
         libraries=["stdc++"]
     )]
 
